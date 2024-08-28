@@ -1,12 +1,12 @@
 import {
-  HttpException,
-  HttpStatus,
+  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import * as mongoose from 'mongoose';
 import { Book } from './schemas/book.schema';
+import { Query } from 'express-serve-static-core';
 
 @Injectable()
 export class BookService {
@@ -15,89 +15,68 @@ export class BookService {
     private bookModel: mongoose.Model<Book>,
   ) {}
 
-  async findAll(): Promise<Book[]> {
-    try {
-      const books = await this.bookModel.find();
-      return books;
-    } catch (error) {
-      console.log('Error occur while fetcing the data', error);
-      throw new HttpException(
-        'server-error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        { cause: error },
-      );
-    }
+  async findAll(query: Query): Promise<Book[]> {
+    // console.log(query);
+    const resultPerPage = 3;
+    const currentPage = Number(query.page) || 1;
+    const skipResult = resultPerPage * (currentPage - 1);
+
+    const keyword = query.keyword
+      ? {
+          title: {
+            $regex: query.keyword,
+            $options: 'i',
+          },
+        }
+      : {};
+
+    const category = query.category
+      ? {
+          category: query.category,
+        }
+      : {};
+
+    const filters = { ...keyword, ...category };
+    const books = await this.bookModel
+      .find(filters)
+      .limit(resultPerPage)
+      .skip(skipResult);
+    return books;
   }
 
   async create(book: Book): Promise<Book> {
-    try {
-      const res = await this.bookModel.create(book);
-      return res;
-    } catch (error) {
-      console.log('Error occur while creating a new data', error);
-      throw new HttpException(
-        'server-error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        { cause: error },
-      );
-    }
+    const res = await this.bookModel.create(book);
+    return res;
   }
 
   async findById(id: string): Promise<Book> {
-    try {
-      const res = await this.bookModel.findById(id).exec();
-      if (!res) {
-        throw new NotFoundException('Book not found');
-      }
-      return res;
-    } catch (error) {
-      console.log(
-        `Error occur while fetcing the data of particular ${id}`,
-        error,
-      );
-      throw new HttpException(
-        'server-error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        { cause: error },
-      );
+    const isValidId = mongoose.isValidObjectId(id);
+    if (!isValidId) {
+      throw new BadRequestException('Please enter a correct Id');
     }
+    const res = await this.bookModel.findById(id).exec();
+    if (!res) {
+      throw new NotFoundException('Book not found');
+    }
+    return res;
   }
 
   async updateById(id: string, book: Book): Promise<Book> {
-    try {
-      const result = await this.bookModel.findByIdAndUpdate(id, book, {
-        new: true,
-        runValidators: true,
-      });
-      if (!result) {
-        throw new NotFoundException('Book not found of this id');
-      }
-      return result;
-    } catch (error) {
-      console.log(`Error occur while updating the data of id ${id}`, error);
-      throw new HttpException(
-        'server-error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        { cause: error },
-      );
+    const result = await this.bookModel.findByIdAndUpdate(id, book, {
+      new: true,
+      runValidators: true,
+    });
+    if (!result) {
+      throw new NotFoundException('Book not found of this id');
     }
+    return result;
   }
 
   async deleteById(id: string): Promise<Book> {
-    try {
-      const result = await this.bookModel.findByIdAndDelete(id);
-    if(!result){
-      throw new NotFoundException('Book not found of this id')
+    const result = await this.bookModel.findByIdAndDelete(id);
+    if (!result) {
+      throw new NotFoundException('Book not found of this id');
     }
-    return result; 
-    } catch (error) {
-      console.log('Error occur while deleting the data', error);
-      throw new HttpException(
-        'server-error',
-        HttpStatus.INTERNAL_SERVER_ERROR,
-        { cause: error },
-      );
-    }
-   
+    return result;
   }
 }
